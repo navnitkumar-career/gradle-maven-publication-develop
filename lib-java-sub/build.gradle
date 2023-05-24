@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2018. Kaede<kidhaibara@gmail.com>
+ */
+
+apply plugin: 'java'
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+
+    compile 'commons-io:commons-io:2.5'
+    compile 'org.apache.commons:commons-lang3:3.5'
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_7
+targetCompatibility = JavaVersion.VERSION_1_7
+
+// ------------------------------------------------------------------------------------------------+
+// PUBLISH                                                                                         |
+// ------------------------------------------------------------------------------------------------+
+
+// ----------
+// with 'maven'
+// ----------
+// apply from: rootProject.file('gradle/maven.gradle')
+
+// ----------
+// with 'maven-publish'
+// ----------
+// apply from: rootProject.file('gradle/maven-publish.gradle')
+
+// ----------
+// with custom 'publication'
+// For non-builtin plugin, we should add classpath within 'build.gradle'
+// ----------
+buildscript {
+    repositories {
+        jcenter()
+        maven { url rootProject.file('maven') }
+    }
+    dependencies {
+        classpath 'com.kaedea:publication:0.3.2'
+    }
+}
+apply plugin: 'com.kaedea.publication'
+publication {
+    jarSources = true
+    jarJavaDoc = false
+    jarTests = false
+
+    GROUP('com.kaedea')
+    VERSION_NAME('0.1.0-SNAPSHOT')
+
+    POM_NAME('Publication Java Sub')
+    POM_ARTIFACT_ID('publication-java-sub')
+    POM_PACKAGING('jar')
+    POM_URL('https://github.com/kaedea/publication/')
+    POM_DESCRIPTION('Demo java library of project Publications')
+
+    POM_SCM_URL('https://github.com/kaedea/publication/')
+    POM_SCM_CONNECTION('scm:git:git://github.com/kaedea/publication.git')
+    POM_SCM_DEV_CONNECTION('scm:git:ssh://git@github.com:kaedea/publication.git')
+
+    POM_LICENCE_NAME('The Apache Software License, Version 2.0')
+    POM_LICENCE_URL('http://www.apache.org/licenses/LICENSE-2.0.txt')
+    POM_LICENCE_DIST('repo')
+
+    POM_DEVELOPER_ID('kaedea')
+    POM_DEVELOPER_NAME('Kaede Akatsuki')
+
+    uploadToBintray = true
+    BINTRAY_REPO('repo')
+    BINTRAY_NAME('publication-java-sub')
+    BINTRAY_USERNAME('kaedea')
+    BINTRAY_API_KEY('bintray_api_key')
+}

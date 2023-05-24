@@ -1,0 +1,113 @@
+/*
+ * Copyright (c) 2018. Kaede<kidhaibara@gmail.com>
+ */
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 27
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 27
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation 'com.android.support.test:runner:1.0.1'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
+
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:appcompat-v7:27.1.1'
+
+    implementation project(':lib-java')
+}
+
+// ------------------------------------------------------------------------------------------------+
+// PUBLISH                                                                                         |
+// ------------------------------------------------------------------------------------------------+
+
+// ----------
+// with 'maven'
+// ----------
+apply from: rootProject.file('gradle/maven.gradle')
+
+// ----------
+// with 'maven-publish'
+// ----------
+// apply from: rootProject.file('gradle/maven-publish.gradle')
+
+
+// ----------
+// with 'android-maven'
+// For non-builtin plugin, we should add classpath within 'build.gradle'
+// ----------
+// buildscript {
+//     repositories { mavenCentral() }
+//     dependencies { classpath 'com.github.dcendents:android-maven-gradle-plugin:2.1' }
+// }
+// apply from: rootProject.file('gradle/maven-dcendents.gradle')
+
+// ----------
+// with custom 'publication'
+// For non-builtin plugin, we should add classpath within 'build.gradle'
+// ----------
+// buildscript {
+//     repositories {
+//         jcenter()
+//         maven { url rootProject.file('maven') }
+//     }
+//     dependencies {
+//         classpath 'com.kaedea:publication:0.2.0'
+//     }
+// }
+// apply plugin: 'com.kaedea.publication'
+// publication {
+//     jarSources = false
+//     jarJavaDoc = false
+//     jarTests = false
+//
+//     GROUP('com.kaedea')
+//     VERSION_NAME('0.1.0-SNAPSHOT')
+//
+//     POM_NAME('Publication Android Sub')
+//     POM_ARTIFACT_ID('publication-android-sub')
+//     POM_PACKAGING('jar')
+//     POM_URL('https://github.com/kaedea/publication/')
+//     POM_DESCRIPTION('Demo android library of project Publications')
+//
+//     POM_SCM_URL('https://github.com/kaedea/publication/')
+//     POM_SCM_CONNECTION('scm:git:git://github.com/kaedea/publication.git')
+//     POM_SCM_DEV_CONNECTION('scm:git:ssh://git@github.com:kaedea/publication.git')
+//
+//     POM_LICENCE_NAME('The Apache Software License, Version 2.0')
+//     POM_LICENCE_URL('http://www.apache.org/licenses/LICENSE-2.0.txt')
+//     POM_LICENCE_DIST('repo')
+//
+//     POM_DEVELOPER_ID('kaedea')
+//     POM_DEVELOPER_NAME('Kaede Akatsuki')
+// }
+
+// ----------
+// with 'bintray'
+// For non-builtin plugin, we should add classpath within 'build.gradle'
+// ----------
+// buildscript {
+//     repositories { jcenter() }
+//     dependencies { classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.7.3' }
+// }
+// apply from: rootProject.file('gradle/bintray.gradle')

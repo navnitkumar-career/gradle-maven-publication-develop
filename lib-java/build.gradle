@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2018. Kaede<kidhaibara@gmail.com>
+ */
+
+apply plugin: 'java'
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+
+    implementation project(':lib-java-sub')
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_7
+targetCompatibility = JavaVersion.VERSION_1_7
+
+// ------------------------------------------------------------------------------------------------+
+// PUBLISH                                                                                         |
+// ------------------------------------------------------------------------------------------------+
+
+// ----------
+// with 'maven'
+// ----------
+apply from: rootProject.file('gradle/maven.gradle')
+
+// ----------
+// with 'maven-publish'
+// ----------
+// apply from: rootProject.file('gradle/maven-publish.gradle')

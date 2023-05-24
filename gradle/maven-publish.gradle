@@ -1,0 +1,286 @@
+/*
+ * Copyright (c) 2018. Kaede<kidhaibara@gmail.com>
+ */
+
+// ----------
+// Script that works with official gradle plugin:
+// Gradle's maven plugin 'maven-publish'
+// https://docs.gradle.org/current/userguide/publishing_maven.html
+// ----------
+apply plugin: 'maven-publish'
+
+// Sometimes plugin/service reads value from project 'group/name/version'
+// We can set the value here except 'name', which is read-only
+group = GROUP
+version = VERSION_NAME
+
+def isReleaseBuild() {
+    return VERSION_NAME.contains("SNAPSHOT") == false
+}
+
+def isAndroidProject() {
+    def plugins = project.getPlugins()
+    return plugins.hasPlugin('com.android.application') || plugins.hasPlugin('com.android.library')
+}
+
+def getExternalScript = {
+    if (rootProject.file("gradle/$it").exists()) {
+        return rootProject.file("gradle/$it")
+    }
+    "http://kaedea.github.com/gradle-maven-publication/gradle/$it"
+}
+
+def getReleaseRepositoryUrl() {
+    return hasProperty('RELEASE_REPOSITORY_URL') ? RELEASE_REPOSITORY_URL
+            : System.env.RELEASE_REPOSITORY_URL
+}
+
+def getSnapshotRepositoryUrl() {
+    return hasProperty('SNAPSHOT_REPOSITORY_URL') ? SNAPSHOT_REPOSITORY_URL
+            : System.env.RELEASE_REPOSITORY_URL
+}
+
+def getRepositoryUsername() {
+    return hasProperty('NEXUS_USERNAME') ? NEXUS_USERNAME : System.env.NEXUS_USERNAME
+}
+
+def getRepositoryPassword() {
+    return hasProperty('NEXUS_PASSWORD') ? NEXUS_PASSWORD : System.env.NEXUS_PASSWORD
+}
+
+// ----------
+// 1. Config of artifacts to package
+// ----------
+apply from: getExternalScript('artifact-tasks.gradle')
+
+if (isAndroidProject()) {
+    artifacts {
+        archives androidJavadocJar
+        archives androidSourcesJar
+    }
+    // or
+    // artifacts.add('archives', androidJavadocJar)
+    // artifacts.add('archives', androidSourcesJar)
+} else {
+    artifacts {
+        archives javadocJar
+        archives sourcesJar
+    }
+}
+
+// ----------
+// Configuration of 'maven-publish'
+// Run ':generatePomFileForArchivesPublication' to locally generate pom.xml
+// Run ':publishToMavenLocal' to publish locally
+// Run ':publish' to publish the artifact to maven repository
+// ----------
+publishing {
+    publications {
+        archives(MavenPublication) {
+            // 2. Config artifact ids
+            groupId GROUP
+            artifactId POM_ARTIFACT_ID
+            version = VERSION_NAME
+
+            if (isAndroidProject()) {
+                artifact bundleRelease
+            }
+
+            pom.withXml {
+                def dependenciesNode = asNode().appendNode('dependencies')
+                def finished = []
+                def addDependency = { configuration, scope ->
+                    configuration.allDependencies.each { dep ->
+                        if (dep.group == null || dep.version == null || dep.name == null || dep.name == "unspecified"
+                                || finished.contains(dep))
+                            return
+                        finished << dep
+
+                        // DefaultProjectDependency (local module) should be resolved first,
+                        // or its version with be 'unspecified'. Besides we can also get the type
+                        // after resolving
+                        def dependencyFiles
+                        def extension
+                        def error
+                        try {
+                            dependencyFiles = configuration.files(dep)
+                        } catch (ignored) {
+                            // Maybe 'Resolving configuration xxx directly is not allowed'
+                            // Try to resolve with archives configuration any way
+                            error = ignored
+                            try {
+                                dependencyFiles = configurations.archives.files(dep)
+                            } catch (exception) {
+                                error = exception
+                            }
+                        }
+                        if (dependencyFiles != null && dependencyFiles.size() > 0) {
+                            def firstFile = dependencyFiles.first()
+                            extension = firstFile.name.substring(firstFile.name.lastIndexOf(".") + 1)
+                        }
+                        def version = dep.version
+                        if (version == "unspecified") {
+                            // This is our last chance, retrieve directly from project property
+                            version = project.version
+                            if (version == "unspecified")
+                                throw new GradleException(
+                                        "Can not resolve verson of [$dep.name] ${error ? error.message : ''}"
+                                )
+                        }
+
+                        def node = dependenciesNode.appendNode('dependency')
+                        node.appendNode('groupId', dep.group)
+                        node.appendNode('artifactId', dep.name)
+                        node.appendNode('version', version)
+                        node.appendNode('scope', scope)
+                        if (extension) node.appendNode('type', extension)
+
+                        // Exclusions (transitive dependencies of the current dependency)
+                        if (!dep.transitive) {
+                            // If this dependency is transitive, we should force exclude all its dependencies them from the POM
+                            final exclusionNode = node.appendNode('exclusions').appendNode('exclusion')
+                            exclusionNode.appendNode('groupId', '*')
+                            exclusionNode.appendNode('artifactId', '*')
+                        } else if (!dep.properties.excludeRules.empty) {
+                            // Otherwise add specified exclude rules
+                            final exclusionNode = node.appendNode('exclusions').appendNode('exclusion')
+                            dep.properties.excludeRules.each { ExcludeRule rule ->
+                                exclusionNode.appendNode('groupId', rule.group ?: '*')
+                                exclusionNode.appendNode('artifactId', rule.module ?: '*')
+                            }
+                        }
+                    }
+                }
+                // 4. Handling transitive dependencies
+                // Gradle dependencies configurations to maven dependencies scope
+                // android:
+                // +-----------------------------------------------------------+
+                // | CONFIGURATION NAME          SCOPE / DEFAULT       DESC    |
+                // |-----------------------------------------------------------|
+                // | compile                   -> pom compile/removed  default |
+                // | provided                  -> pom provided/removed default |
+                // | api                       -> pom compile/removed  default |
+                // | implementation            -> pom compile/removed  default |
+                // | compileOnly               -> pom provided/removed default |
+                // | runtimeOnly               -> pom runtime/removed  default |
+                // | archives                  -> pom removed          default |
+                // | androidTestCompile        -> pom test/removed     default |
+                // | androidTestApi            -> pom test/removed     default |
+                // | androidTestImplementation -> pom test/removed     default |
+                // | testCompile               -> pom test/removed     default |
+                // | testApi                   -> pom test/removed     default |
+                // | testImplementation        -> pom test/removed     default |
+                // | androidTestProvided       -> pom removed          default |
+                // | androidTestCompileOnly    -> pom removed          default |
+                // | androidTestRuntimeOnly    -> pom removed          default |
+                // | testProvided              -> pom removed          default |
+                // | testCompileOnly           -> pom removed          default |
+                // | testRuntimeOnly           -> pom removed          default |
+                // +-----------------------------------------------------------+
+                // Duplicated issues:
+                // compile -> compile, api, implementation, archives
+                // api      -> api, implementation, archives
+                // provided -> provided, compileOnly
+                //
+                // java:
+                // +-----------------------------------------------------------+
+                // | CONFIGURATION NAME          SCOPE / DEFAULT       DESC    |
+                // |-----------------------------------------------------------|
+                // | compile                   -> pom compile/removed  default |
+                // | runtime                   -> pom runtime/removed  default |
+                // | implementation            -> pom compile/removed  default |
+                // | compileOnly               -> pom provided/removed default |
+                // | runtimeOnly               -> pom runtime/removed  default |
+                // | archives                  -> pom removed          default |
+                // | testCompile               -> pom test/removed     default |
+                // | testImplementation        -> pom test/removed     default |
+                // | testRuntime               -> pom test/removed     default |
+                // | testCompileOnly           -> pom removed          default |
+                // | testRuntimeOnly           -> pom removed          default |
+                // +-----------------------------------------------------------+
+                // Duplicated issues:
+                // compile -> compile, runtime, implementation
+                //
+                // force: plugin force converts the scope mapping, we can do no more
+                // default: plugin default converts the scope mapping, can be modified as following
+                if (isAndroidProject()) {
+                    addDependency(configurations.compile, 'compile')
+                    addDependency(configurations.provided, 'provided')
+                    addDependency(configurations.api, 'compile')
+                    addDependency(configurations.implementation, 'compile')
+                    addDependency(configurations.compileOnly, 'provided')
+                    addDependency(configurations.runtimeOnly, 'runtime')
+                    addDependency(configurations.androidTestCompile, 'test')
+                    addDependency(configurations.androidTestApi, 'test')
+                    addDependency(configurations.androidTestImplementation, 'test')
+                    addDependency(configurations.testCompile, 'test')
+                    addDependency(configurations.testApi, 'test')
+                    addDependency(configurations.testImplementation, 'test')
+                } else {
+                    addDependency(configurations.compile, 'compile')
+                    addDependency(configurations.runtime, 'runtime')
+                    addDependency(configurations.implementation, 'compile')
+                    addDependency(configurations.compileOnly, 'provided')
+                    addDependency(configurations.runtimeOnly, 'runtime')
+                    addDependency(configurations.testCompile, 'test')
+                    addDependency(configurations.testImplementation, 'test')
+                    addDependency(configurations.testRuntime, 'test')
+                }
+
+                // 3. Config pom.xml extra info
+                asNode().children().last() + {
+                    resolveStrategy = Closure.DELEGATE_FIRST
+                    name POM_NAME
+                    // packaging has been defined within 'artifact bundleRelease' above
+                    // packaging POM_PACKAGING
+                    url POM_URL
+                    description POM_DESCRIPTION
+
+                    scm {
+                        url POM_SCM_URL
+                        connection POM_SCM_CONNECTION
+                        developerConnection POM_SCM_DEV_CONNECTION
+                    }
+                    licenses {
+                        license {
+                            name POM_LICENCE_NAME
+                            url POM_LICENCE_URL
+                            distribution POM_LICENCE_DIST
+                        }
+                    }
+                    developers {
+                        developer {
+                            id POM_DEVELOPER_ID
+                            name POM_DEVELOPER_NAME
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. Config maven repository
+    repositories {
+        maven {
+            url isReleaseBuild() ? getReleaseRepositoryUrl() : getSnapshotRepositoryUrl()
+            credentials {
+                username = getRepositoryUsername()
+                password = getRepositoryPassword()
+            }
+        }
+    }
+}
+
+// ----------
+// Signing
+// Supported from gradle 4.8 latest nightly
+// https://discuss.gradle.org/t/how-to-publish-artifacts-signatures-asc-files-using-maven-publish-plugin/7422/23
+// ----------
+// apply plugin: 'signing'
+//
+// afterEvaluate {
+//     signing {
+//         required { isReleaseBuild() && gradle.taskGraph.hasTask("publish") }
+//         sign publishing.publications.archives
+//     }
+// }
